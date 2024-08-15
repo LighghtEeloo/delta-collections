@@ -1,0 +1,13 @@
+[package]
+name = "delta-collections"
+version = "0.0.1"
+edition = "2021"
+description = "Data structures with revertable operations called deltas."
+readme = "readme.md"
+license = "MIT"
+
+[features]
+default = ["inline-more"]
+inline-more = []
+
+[dependencies]
