@@ -1,10 +1,12 @@
 [package]
 name = "delta-collections"
-version = "0.0.2"
+version = "0.1.0"
 edition = "2021"
+license = "MIT"
 description = "Data structures with revertable operations called deltas."
 readme = "readme.md"
-license = "MIT"
+# documentation = ""
+repository = "https://github.com/LighghtEeloo/delta-collections"
 
 [features]
 default = ["inline-more"]

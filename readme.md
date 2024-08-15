@@ -8,5 +8,8 @@ changes into the base map. However, if the user is unsatisfied with the result
 of the specific layer of operation, the changes that happens after the layer can
 be discarded on demand by calling `DeltaHashMap::revert`.
 
+Currently, only hashmaps are supported. Common operations and iterators on the
+data structure are also supported.
+
 See `DeltaHashMap::commit`, `DeltaHashMap::revert` and `DeltaHashMap::cocommit`
 for more information.
