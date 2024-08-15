@@ -1,11 +1,13 @@
-//! A hashmap with delta entries that enables quick revert of the recent changes.
-//! Implementation-wise, the hashmap keeps a *delta* map that records the additional
-//! changes on a *base* map. The user can call `DeltaHashMap::commit` to merge the
-//! additional changes into the base map. However, if the user is unsatisfied with
-//! the result of the specific layer of operation, the changes that happens after the
-//! layer can be discarded on demand.
-//!
-//! See `DeltaHashMap::commit` and `DeltaHashMap::cocommit` for more information.
+//! Data structures with delta entries that enables quick revert of the recent
+//! changes. Implementation-wise, the data structures keeps a *delta* structure that
+//! records the additional changes on the *base* structure. Take the `HashMap` for
+//! example, the user can call `DeltaHashMap::commit` to merge the additional
+//! changes into the base map. However, if the user is unsatisfied with the result
+//! of the specific layer of operation, the changes that happens after the layer can
+//! be discarded on demand by calling `DeltaHashMap::revert`.
+//! 
+//! See `DeltaHashMap::commit`, `DeltaHashMap::revert` and `DeltaHashMap::cocommit`
+//! for more information.
 
 use std::{
     borrow::Borrow,
@@ -20,7 +22,8 @@ use std::{
 /// A hashmap with delta entries. A change will eventually be committed from
 /// [`delta`] down to [`base`] by calling [`Self::commit`]. If the user is
 /// unsatisfied with the result of a specific layer of operation, the changes
-/// that happens after the layer can be discarded on demand.
+/// that happens after the layer can be discarded on demand by calling
+/// [`Self::revert`].
 ///
 /// [`base`]: Self::base
 /// [`delta`]: Self::delta
@@ -119,6 +122,26 @@ impl<K, V> DeltaHashMap<K, V> {
             base: self.base.iter(),
             cache: self.delta.iter(),
         }
+    }
+
+    /// Reverts the operations kept in delta.
+    /// 
+    /// # Examples
+    ///
+    /// ```
+    /// use delta_collections::DeltaHashMap as HashMap;
+    ///
+    /// let mut map = HashMap::from_iter([
+    ///     (1, "a"),
+    /// ]);
+    /// map.insert(2, "b");
+    /// assert_eq!(map.len(), 2);
+    /// 
+    /// map.revert();
+    /// assert_eq!(map.len(), 1);
+    /// ```
+    pub fn revert(&mut self) {
+        self.delta.clear()
     }
 
     /// Clears the map, removing all key-value pairs. Keeps the allocated memory
