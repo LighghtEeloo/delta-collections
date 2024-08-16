@@ -266,7 +266,7 @@ where
     /// Retains only the elements specified by the predicate. Keeps the
     /// allocated memory for reuse.
     ///
-    /// In other words, remove all pairs `(k, v)` such that `f(&k, & )` returns `false`.
+    /// In other words, remove all pairs `(k, v)` such that `f(&k, &v)` returns `false`.
     /// The elements are visited in unsorted (and unspecified) order.
     ///
     /// # Examples
@@ -286,9 +286,9 @@ where
     /// vec.sort_unstable();
     /// assert_eq!(vec, [(0, 0), (2, 20), (4, 40), (6, 60)]);
     /// ```
-    pub fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, f: F)
     where
-        F: FnMut(&K, &V) -> bool,
+        F: Fn(&K, &V) -> bool,
     {
         let mut discard = HashSet::new();
         for (key, value) in self.base.iter() {
