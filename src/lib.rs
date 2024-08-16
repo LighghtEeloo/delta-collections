@@ -1,12 +1,12 @@
-//! Data structures with delta entries that enables quick revert of the recent
+//! Data structures with delta entries that enables quick unstage of the recent
 //! changes. Implementation-wise, the data structures keeps a *delta* structure that
 //! records the additional changes on the *base* structure. Take the `HashMap` for
 //! example, the user can call [`DeltaHashMap::commit`] to merge the additional
 //! changes into the base map. However, if the user is unsatisfied with the result
 //! of the specific layer of operation, the changes that happens after the layer can
-//! be discarded on demand by calling [`DeltaHashMap::revert`].
+//! be discarded on demand by calling [`DeltaHashMap::unstage`].
 //!
-//! See [`DeltaHashMap::commit`], [`DeltaHashMap::revert`] and [`DeltaHashMap::cocommit`]
+//! See [`DeltaHashMap::commit`], [`DeltaHashMap::unstage`] and [`DeltaHashMap::cocommit`]
 //! for more information.
 
 use std::{
@@ -23,7 +23,7 @@ use std::{
 /// [`delta`] down to [`base`] by calling [`Self::commit`]. If the user is
 /// unsatisfied with the result of a specific layer of operation, the changes
 /// that happens after the layer can be discarded on demand by calling
-/// [`Self::revert`].
+/// [`Self::unstage`].
 ///
 /// [`base`]: Self::base
 /// [`delta`]: Self::delta
@@ -124,7 +124,7 @@ impl<K, V> DeltaHashMap<K, V> {
         }
     }
 
-    /// Reverts the operations kept in delta.
+    /// Unstages the operations kept in delta.
     ///
     /// # Examples
     ///
@@ -137,10 +137,10 @@ impl<K, V> DeltaHashMap<K, V> {
     /// map.insert(2, "b");
     /// assert_eq!(map.len(), 2);
     ///
-    /// map.revert();
+    /// map.unstage();
     /// assert_eq!(map.len(), 1);
     /// ```
-    pub fn revert(&mut self) {
+    pub fn unstage(&mut self) {
         self.delta.clear()
     }
 
@@ -168,18 +168,26 @@ impl<K, V> DeltaHashMap<K, V> {
         self.delta.clear();
     }
 
+    /// Returns reference of internal base map. It's marked unsafe because the
+    /// user must not violate the invariants enforced on the field.
     #[inline]
     pub unsafe fn base_ref(&self) -> &HashMap<K, V> {
         &self.base
     }
+    /// Returns reference of internal delta map. It's marked unsafe because the
+    /// user must not violate the invariants enforced on the field.
     #[inline]
     pub unsafe fn delta_ref(&self) -> &HashMap<K, Option<V>> {
         &self.delta
     }
+    /// Returns mutable reference of internal base map. It's marked unsafe
+    /// because the user must not violate the invariants enforced on the field.
     #[inline]
     pub unsafe fn base_ref_mut(&mut self) -> &mut HashMap<K, V> {
         &mut self.base
     }
+    /// Returns mutable reference of internal delta map. It's marked unsafe
+    /// because the user must not violate the invariants enforced on the field.
     #[inline]
     pub unsafe fn delta_ref_mut(&mut self) -> &mut HashMap<K, Option<V>> {
         &mut self.delta
@@ -190,6 +198,54 @@ impl<K, V> DeltaHashMap<K, V>
 where
     K: Hash + Eq,
 {
+    /// Insert data to the delta map. Different from [`Self::insert`], this
+    /// function is cheaper because it doesn't return the previously-existed
+    /// value in the base map, if any; all it does is return the state presented
+    /// in the delta map.
+    #[inline]
+    pub fn insert_delta(&mut self, k: K, v: V) -> Option<V> {
+        self.delta.insert(k, Some(v)).flatten()
+    }
+    /// Get reference of a key in the delta map. See [`Self::get`] for a
+    /// behavior similar to [`HashMap`].
+    #[inline]
+    pub fn get_delta<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.delta.get(k).map(Option::as_ref).flatten()
+    }
+    /// Get mutable reference of a key in the delta map. See [`Self::get_mut`]
+    /// for a behavior similar to [`HashMap`].
+    #[inline]
+    pub fn get_mut_delta<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.delta.get_mut(k).map(Option::as_mut).flatten()
+    }
+    /// Get reference of a key value pair in the delta map. See
+    /// [`Self::get_key_value`] for a behavior similar to [`HashMap`].
+    #[inline]
+    pub fn get_key_value_delta<Q: ?Sized>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.delta
+            .get_key_value(key)
+            .map(|(k, state)| state.as_ref().and_then(|v| Some((k, v))))
+            .flatten()
+    }
+    /// Remove data from the delta map. See [`Self::remove`] for a behavior
+    /// similar to [`HashMap`].
+    #[inline]
+    pub fn remove_delta(&mut self, k: K) -> Option<V> {
+        self.delta.insert(k, None).flatten()
+    }
+
     /// Returns the number of elements in the map.
     ///
     /// # Examples
@@ -233,90 +289,6 @@ where
         self.len() == 0
     }
 
-    #[inline]
-    pub fn insert_delta(&mut self, k: K, v: V) {
-        self.delta.insert(k, Some(v));
-    }
-    #[inline]
-    pub fn get_delta<Q: ?Sized>(&self, k: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq,
-    {
-        self.delta.get(k).map(Option::as_ref).flatten()
-    }
-    #[inline]
-    pub fn get_mut_delta<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq,
-    {
-        self.delta.get_mut(k).map(Option::as_mut).flatten()
-    }
-    #[inline]
-    pub fn remove_delta(&mut self, k: K) {
-        self.delta.insert(k, None);
-    }
-}
-
-impl<K, V> DeltaHashMap<K, V>
-where
-    K: Clone + Hash + Eq,
-{
-    /// Retains only the elements specified by the predicate. Keeps the
-    /// allocated memory for reuse.
-    ///
-    /// In other words, remove all pairs `(k, v)` such that `f(&k, &v)` returns `false`.
-    /// The elements are visited in unsorted (and unspecified) order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use delta_collections::DeltaHashMap;
-    ///
-    /// let mut map: DeltaHashMap<i32, i32> = (0..8).map(|x|(x, x*10)).collect();
-    /// assert_eq!(map.len(), 8);
-    ///
-    /// map.retain(|&k, _| k % 2 == 0);
-    ///
-    /// // We can see, that the number of elements inside map is changed.
-    /// assert_eq!(map.len(), 4);
-    ///
-    /// let mut vec: Vec<(i32, i32)> = map.iter().map(|(&k, &v)| (k, v)).collect();
-    /// vec.sort_unstable();
-    /// assert_eq!(vec, [(0, 0), (2, 20), (4, 40), (6, 60)]);
-    /// ```
-    pub fn retain<F>(&mut self, f: F)
-    where
-        F: Fn(&K, &V) -> bool,
-    {
-        let mut discard = HashSet::new();
-        for (key, value) in self.base.iter() {
-            if !f(key, value) {
-                discard.insert(key.clone());
-            }
-        }
-        for (key, state) in self.delta.iter_mut() {
-            match state {
-                Some(value) => {
-                    if !f(key, value) {
-                        discard.remove(key);
-                        *state = None
-                    }
-                }
-                None => {}
-            }
-        }
-        for key in discard {
-            self.delta.insert(key, None);
-        }
-    }
-}
-
-impl<K, V> DeltaHashMap<K, V>
-where
-    K: Hash + Eq,
-{
     /// Returns a reference to the value corresponding to the key.
     ///
     /// The key may be any borrowed form of the map's key type, but
@@ -420,36 +392,63 @@ where
 
 impl<K, V> DeltaHashMap<K, V>
 where
-    K: Hash + Eq,
-    V: Clone,
+    K: Clone + Hash + Eq,
 {
-    /// Returns a mutable reference to the value corresponding to the key.
+    /// Retains only the elements specified by the predicate. Keeps the
+    /// allocated memory for reuse.
     ///
-    /// The key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// In other words, remove all pairs `(k, v)` such that `f(&k, &v)` returns `false`.
+    /// The elements are visited in unsorted (and unspecified) order.
     ///
     /// # Examples
     ///
     /// ```
-    /// use delta_collections::DeltaHashMap as HashMap;
+    /// use delta_collections::DeltaHashMap;
     ///
-    /// let mut map = HashMap::new();
-    /// map.insert(1, "a");
-    /// if let Some(x) = map.get_mut(1) {
-    ///     *x = "b";
-    /// }
-    /// assert_eq!(map[&1], "b");
+    /// let mut map: DeltaHashMap<i32, i32> = (0..8).map(|x|(x, x*10)).collect();
+    /// assert_eq!(map.len(), 8);
+    ///
+    /// map.retain(|&k, _| k % 2 == 0);
+    ///
+    /// // We can see, that the number of elements inside map is changed.
+    /// assert_eq!(map.len(), 4);
+    ///
+    /// let mut vec: Vec<(i32, i32)> = map.iter().map(|(&k, &v)| (k, v)).collect();
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [(0, 0), (2, 20), (4, 40), (6, 60)]);
     /// ```
-    #[cfg_attr(feature = "inline-more", inline)]
-    pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
-        let state = self.base.get(&key);
-        self.delta
-            .entry(key)
-            .or_insert_with(|| state.cloned())
-            .as_mut()
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: Fn(&K, &V) -> bool,
+    {
+        let mut discard = HashSet::new();
+        for (key, value) in self.base.iter() {
+            if !f(key, value) {
+                discard.insert(key.clone());
+            }
+        }
+        for (key, state) in self.delta.iter_mut() {
+            match state {
+                Some(value) => {
+                    if !f(key, value) {
+                        discard.remove(key);
+                        *state = None
+                    }
+                }
+                None => {}
+            }
+        }
+        for key in discard {
+            self.delta.insert(key, None);
+        }
     }
+}
 
+impl<K, V> DeltaHashMap<K, V>
+where
+    K: Hash + Eq,
+    V: Clone,
+{
     /// Inserts a key-value pair into the map.
     ///
     /// If the map did not have this key present, [`None`] is returned.
@@ -491,6 +490,33 @@ where
                 base_old_value.cloned()
             }
         }
+    }
+
+    /// Returns a mutable reference to the value corresponding to the key.
+    ///
+    /// The key may be any borrowed form of the map's key type, but
+    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
+    /// the key type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use delta_collections::DeltaHashMap as HashMap;
+    ///
+    /// let mut map = HashMap::new();
+    /// map.insert(1, "a");
+    /// if let Some(x) = map.get_mut(1) {
+    ///     *x = "b";
+    /// }
+    /// assert_eq!(map[&1], "b");
+    /// ```
+    #[cfg_attr(feature = "inline-more", inline)]
+    pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
+        let state = self.base.get(&key);
+        self.delta
+            .entry(key)
+            .or_insert_with(|| state.cloned())
+            .as_mut()
     }
 
     /// Removes a key from the map, returning the value at the key if the key
