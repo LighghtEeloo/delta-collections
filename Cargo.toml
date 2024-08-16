@@ -1,11 +1,11 @@
 [package]
 name = "delta-collections"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "Data structures with revertable operations called deltas."
 readme = "readme.md"
-# documentation = ""
+documentation = "https://docs.rs/delta-collections/latest/delta_collections/"
 repository = "https://github.com/LighghtEeloo/delta-collections"
 
 [features]
