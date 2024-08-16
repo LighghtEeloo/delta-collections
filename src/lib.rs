@@ -33,6 +33,9 @@ pub struct DeltaHashMap<K, V> {
     pub(crate) delta: HashMap<K, Option<V>>,
 }
 
+#[cfg(feature = "serde")]
+mod serde;
+
 impl<K, V> DeltaHashMap<K, V> {
     /// Creates an empty `DeltaHashMap`.
     ///
@@ -120,7 +123,7 @@ impl<K, V> DeltaHashMap<K, V> {
         Iter {
             discard: HashSet::new(),
             base: self.base.iter(),
-            cache: self.delta.iter(),
+            delta: self.delta.iter(),
         }
     }
 
@@ -814,9 +817,10 @@ where
     /// ```
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+        // Todo: lazy cocommit
         self.cocommit();
         IterMut {
-            base: self.delta.iter_mut(),
+            delta: self.delta.iter_mut(),
         }
     }
 }
@@ -920,7 +924,7 @@ where
 pub struct Iter<'a, K: 'a, V: 'a> {
     discard: HashSet<&'a K>,
     base: std::collections::hash_map::Iter<'a, K, V>,
-    cache: std::collections::hash_map::Iter<'a, K, Option<V>>,
+    delta: std::collections::hash_map::Iter<'a, K, Option<V>>,
 }
 
 /// A mutable iterator over the entries of a `HashMap`.
@@ -942,7 +946,7 @@ pub struct Iter<'a, K: 'a, V: 'a> {
 /// ```
 #[derive(Debug)]
 pub struct IterMut<'a, K: 'a, V: 'a> {
-    base: std::collections::hash_map::IterMut<'a, K, Option<V>>,
+    delta: std::collections::hash_map::IterMut<'a, K, Option<V>>,
 }
 
 /// An owning iterator over the entries of a `HashMap`.
@@ -1147,7 +1151,7 @@ where
     type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<(&'a K, &'a V)> {
-        while let Some((key, state)) = self.cache.next() {
+        while let Some((key, state)) = self.delta.next() {
             self.discard.insert(key);
             match state {
                 Some(value) => return Some((key, value)),
@@ -1172,7 +1176,7 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
 
     fn next(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
-            match self.base.next() {
+            match self.delta.next() {
                 Some((key, Some(value))) => break Some((key, value)),
                 Some((_key, None)) => continue,
                 None => break None,
