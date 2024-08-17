@@ -9,6 +9,24 @@ where
     K: Hash + Eq,
     V: Clone,
 {
+    /// Gets the given key's corresponding entry in the map for in-place manipulation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use delta_collections::DeltaHashMap as HashMap;
+    ///
+    /// let mut letters = HashMap::new();
+    ///
+    /// for ch in "a short treatise on fungi".chars() {
+    ///     letters.entry(ch).and_modify(|counter| *counter += 1).or_insert(1);
+    /// }
+    ///
+    /// assert_eq!(letters[&'s'], 2);
+    /// assert_eq!(letters[&'t'], 3);
+    /// assert_eq!(letters[&'u'], 1);
+    /// assert_eq!(letters.get(&'y'), None);
+    /// ```
     pub fn entry(&'a mut self, key: K) -> Entry<'a, V> {
         let state = self.base.get(&key);
         let value = self.delta.entry(key).or_insert_with(|| state.cloned());
